@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.test.client import Client
+from django.urls import reverse
+from django.utils import timezone
 
 from news.models import Comment, News
 
@@ -75,11 +77,21 @@ def news_list():
     ]
     return News.objects.bulk_create(all_news)
 
+@pytest.fixture
+def comments_list(news, author):
+    now = timezone.now()
+    comments = []
+
+    for index in range(10):
+        comment = Comment.objects.create(
+            news=news, author=author, text=f'Tекст {index}',
+        )
+        comment.created = now + timedelta(days=index)
+        comment.save()
+        comments.append(comment)
+    
+    return comments
 
 @pytest.fixture
-def form_data():
-    return {
-        'title': 'Новый заголовок',
-        'text': 'Новый текст',
-        'slug': 'new-slug'
-    }
+def detail_url(news):
+    return reverse('news:detail', args=(news.id,))
