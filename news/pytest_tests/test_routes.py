@@ -1,8 +1,8 @@
 from http import HTTPStatus
+
 import pytest
 
 from django.urls import reverse
-from pytest_django.asserts import assertRedirects
 
 
 @pytest.mark.parametrize(
@@ -54,4 +54,6 @@ def test_redirect_for_anonymous_client(client, name, args):
     url = reverse(name, args=args)
     expected_url = f'{login_url}?next={url}'
     response = client.get(url)
-    assertRedirects(response, expected_url)
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == expected_url

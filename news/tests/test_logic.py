@@ -21,7 +21,7 @@ class TestCommentCreation(TestCase):
         cls.user = User.objects.create(username='Мимо проходил')
         cls.auth_client = Client()
         cls.auth_client.force_login(cls.user)
-        cls.form_data = {'text': cls.COMMENT_TEXT}
+        cls.form_data = {'text': 'Текст комментария'}
 
     def test_anonymous_user_cant_create_comment(self):
         self.client.post(self.url, data=self.form_data)

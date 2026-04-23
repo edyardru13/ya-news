@@ -1,84 +1,108 @@
 from http import HTTPStatus
-import pytest
-from pytest_django.asserts import assertRedirects, assertFormError
 
-from django.urls import reverse
-
-from notes.forms import WARNING
-from notes.models import Note
-from pytils.translit import slugify
+from news.models import Comment
 
 
-def test_user_can_create_note(author_client, author, form_data):
-    url = reverse('notes:add')
-    response = author_client.post(url, data=form_data)
-    assertRedirects(response, reverse('notes:success'))
-    assert Note.objects.count() == 1
-    new_note = Note.objects.get()
-    assert new_note.title == form_data['title']
-    assert new_note.text == form_data['text']
-    assert new_note.slug == form_data['slug']
-    assert new_note.author == author
+def test_anonymous_user_cant_create_comment(client, form_data, detail_url):
+    comments_count_before = Comment.objects.count()
+    client.post(detail_url, data=form_data)
+    assert Comment.objects.count() == comments_count_before
 
 
-@pytest.mark.django_db
-def test_anonymous_user_cant_create_note(client, form_data):
-    url = reverse('notes:add')
-    response = client.post(url, data=form_data)
-    login_url = reverse('users:login')
-    expected_url = f'{login_url}?next={url}'
-    assertRedirects(response, expected_url)
-    assert Note.objects.count() == 0
+def test_user_can_create_comment(
+    reader_client,
+    reader,
+    news,
+    form_data,
+    detail_url,
+    url_to_comments
+):
+    comments_count_before = Comment.objects.count()
+
+    response = reader_client.post(detail_url, data=form_data)
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == url_to_comments
+    assert Comment.objects.count() == comments_count_before + 1
+
+    comment = Comment.objects.get(author=reader, news=news)
+
+    assert comment.text == form_data['text']
+    assert comment.author == reader
+    assert comment.news == news
 
 
-def test_not_unique_slug(author_client, note, form_data):
-    url = reverse('notes:add')
-    form_data['slug'] = note.slug
-    response = author_client.post(url, data=form_data)
-    assertFormError(response.context['form'], 'slug', errors=(note.slug + WARNING))
-    assert Note.objects.count() == 1
+def test_user_cant_use_bad_words(
+        reader_client,
+        detail_url,
+        bad_words,
+        bad_words_data,
+        warning
+):
+    comments_count_before = Comment.objects.count()
+
+    response = reader_client.post(detail_url, data=bad_words_data)
+
+    form = response.context['form']
+    assert 'text' in form.errors
+    assert form.errors['text'] == [warning]
+
+    assert Comment.objects.count() == comments_count_before
 
 
-def test_empty_slug(author_client, form_data):
-    url = reverse('notes:add')
-    form_data.pop('slug')
-    response = author_client.post(url, data=form_data)
-    assertRedirects(response, reverse('notes:success'))
-    assert Note.objects.count() == 1
-    new_note = Note.objects.get()
-    expected_slug = slugify(form_data['title'])
-    assert expected_slug == new_note.slug
+def test_author_can_delete_comment(
+    author_client,
+    url_to_comments,
+    delete_comment_url
+):
+    comments_count_before = Comment.objects.count()
+
+    response = author_client.post(delete_comment_url)
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == url_to_comments
+
+    assert Comment.objects.count() == comments_count_before - 1
 
 
-def test_author_can_edit_note(author_client, form_data, note):
-    url = reverse('notes:edit', args=(note.slug,))
-    response = author_client.post(url, form_data)
-    assertRedirects(response, reverse('notes:success'))
-    note.refresh_from_db()
-    assert note.title == form_data['title']
-    assert note.text == form_data['text']
-    assert note.slug == form_data['slug'] 
+def test_user_cant_delete_comment_of_another_user(
+    reader_client,
+    url_to_comments,
+    delete_comment_url
+):
+    comments_count_before = Comment.objects.count()
 
-
-def test_other_user_cant_edit_note(not_author_client, form_data, note):
-    url = reverse('notes:edit', args=(note.slug,))
-    response = not_author_client.post(url, form_data)
+    response = reader_client.post(delete_comment_url)
     assert response.status_code == HTTPStatus.NOT_FOUND
-    note_from_db = Note.objects.get(id=note.id)
-    assert note.title == note_from_db.title
-    assert note.text == note_from_db.text
-    assert note.slug == note_from_db.slug 
+
+    assert Comment.objects.count() == comments_count_before
 
 
-def test_author_can_delete_note(author_client, slug_for_args):
-    url = reverse('notes:delete', args=slug_for_args)
-    response = author_client.post(url)
-    assertRedirects(response, reverse('notes:success'))
-    assert Note.objects.count() == 0
+def test_author_can_edit_comment(
+    author_client,
+    url_to_comments,
+    edit_comment_url,
+    new_form_data,
+    comment
+):
+    response = author_client.post(edit_comment_url, data=new_form_data)
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == url_to_comments
+
+    comment.refresh_from_db()
+
+    assert comment.text == new_form_data['text']
 
 
-def test_other_user_cant_delete_note(not_author_client, slug_for_args):
-    url = reverse('notes:delete', args=slug_for_args)
-    response = not_author_client.post(url)
+def test_user_cant_edit_comment_of_another_user(
+    reader_client,
+    edit_comment_url,
+    form_data,
+    new_form_data,
+    comment
+):
+    response = reader_client.post(edit_comment_url, data=new_form_data)
     assert response.status_code == HTTPStatus.NOT_FOUND
-    assert Note.objects.count() == 1
+
+    comment.refresh_from_db()
+
+    assert comment.text == form_data['text']

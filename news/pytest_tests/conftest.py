@@ -1,15 +1,19 @@
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
 
 from django.conf import settings
 from django.test.client import Client
 from django.urls import reverse
 from django.utils import timezone
 
+from news.forms import BAD_WORDS, WARNING
 from news.models import Comment, News
 
 
-pytestmark = pytest.mark.django_db
+@pytest.fixture(autouse=True)
+def enable_db_access(db):
+    pass
 
 
 @pytest.fixture
@@ -55,11 +59,11 @@ def news():
 
 
 @pytest.fixture
-def comment(news, author):
+def comment(news, author, form_data):
     comment = Comment.objects.create(
         news=news,
         author=author,
-        text='Текст комментария'
+        text=form_data['text']
     )
     return comment
 
@@ -77,6 +81,7 @@ def news_list():
     ]
     return News.objects.bulk_create(all_news)
 
+
 @pytest.fixture
 def comments_list(news, author):
     now = timezone.now()
@@ -89,9 +94,50 @@ def comments_list(news, author):
         comment.created = now + timedelta(days=index)
         comment.save()
         comments.append(comment)
-    
+
     return comments
+
 
 @pytest.fixture
 def detail_url(news):
     return reverse('news:detail', args=(news.id,))
+
+
+@pytest.fixture
+def url_to_comments(detail_url):
+    return detail_url + '#comments'
+
+
+@pytest.fixture
+def delete_comment_url(comment):
+    return reverse('news:delete', args=(comment.id,))
+
+
+@pytest.fixture
+def edit_comment_url(comment):
+    return reverse('news:edit', args=(comment.id,))
+
+
+@pytest.fixture
+def form_data():
+    return {'text': 'Текст комментария'}
+
+
+@pytest.fixture
+def new_form_data():
+    return {'text': 'Обновлённый комментарий'}
+
+
+@pytest.fixture
+def bad_words_data():
+    return {'text': f'Какой-то текст, {BAD_WORDS[0]}, еще текст'}
+
+
+@pytest.fixture
+def warning():
+    return WARNING
+
+
+@pytest.fixture
+def bad_words():
+    return BAD_WORDS
